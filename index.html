@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Surface Duo · 展开 / 外折</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    background: transparent;
+  }
+
+  :root {
+    /* 顶部留给标题的空间，设备舞台从标题下方开始 */
+    --stage-top: 60px;
+  }
+
+  /* ============ 舞台：位于标题下方，iframe 水平居中 ============ */
+  .stage {
+    position: fixed;
+    top: var(--stage-top);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  #deviceFrame {
+    flex: none;
+    height: 100%;
+    border: 0;
+    background: transparent;
+    display: block;
+  }
+
+  /* ============ 左上角标题 ============ */
+  .app-title {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    background: linear-gradient(90deg, #4cc2ff 0%, #6f9bff 45%, #b06bff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* ============ 左侧竖向按钮栏 ============ */
+  .toolbar {
+    position: fixed;
+    top: calc(50% + var(--stage-top) / 2);
+    left: 16px;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 96px;
+    padding: 6px;
+    border-radius: 10px;
+    background: rgba(28, 32, 42, .66);
+    border: 1px solid rgba(255, 255, 255, .09);
+    backdrop-filter: blur(28px) saturate(1.4);
+    -webkit-backdrop-filter: blur(28px) saturate(1.4);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .4);
+  }
+
+  .mode-btn {
+    appearance: none;
+    border: 0;
+    width: 100%;
+    padding: 9px 0;
+    border-radius: 7px;
+    background: transparent;
+    color: rgba(235, 242, 255, .78);
+    font-size: 13px;
+    letter-spacing: .06em;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+  }
+
+  .mode-btn:hover { background: rgba(255, 255, 255, .07); }
+  .mode-btn:active { background: rgba(255, 255, 255, .11); }
+
+  .mode-btn.active {
+    background: rgba(76, 194, 255, .16);
+    color: #9cdcff;
+    box-shadow: inset 0 0 0 1px rgba(76, 194, 255, .35);
+  }
+</style>
+</head>
+<body>
+  <h1 class="app-title">Surface Duo折叠应用自适应示例</h1>
+
+  <div class="toolbar">
+    <button class="mode-btn" id="btnOpen" type="button">展开</button>
+    <button class="mode-btn" id="btnClose" type="button">合上</button>
+    <button class="mode-btn" id="btnFold" type="button">外折</button>
+  </div>
+
+  <div class="stage">
+    <iframe id="deviceFrame" title="Surface Duo 设备演示"></iframe>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var frame    = document.getElementById('deviceFrame');
+  var stage    = document.querySelector('.stage');
+  var btnOpen  = document.getElementById('btnOpen');
+  var btnClose = document.getElementById('btnClose');
+  var btnFold  = document.getElementById('btnFold');
+
+  // 内嵌网页内部按“自身视口宽高比”决定折叠角：
+  //   宽高比 >= 1.65 完全展开，<= 0.85 完全折合
+  // 因此这里只需要连续改变 iframe 的宽度，内嵌页的 rAF 插值会自动播放折叠动画
+  var WIDE_RATIO   = 1.7;   // 保证宽高比越过 1.65
+  var NARROW_RATIO = 0.7;   // 保证宽高比低于 0.85
+
+  var rafId = null;
+  var currentSrc = '';
+  var wantOpen = false;   // 当前是否应处于展开（宽）态；初始为折合态
+
+  var OPEN_SRC = 'surface%20duo%20open.html';
+  var FOLD_SRC = 'surface%20duo%20out%20fold.html';
+
+  // 内嵌网页按“自身视口宽高比”决定折叠角，其视口高度 = 舞台高度（标题下方区域）
+  function stageHeight() {
+    return stage.clientHeight || window.innerHeight;
+  }
+
+  function wideWidth() {
+    // 不超过舞台实际可用宽度
+    return Math.min(stage.clientWidth, Math.round(stageHeight() * WIDE_RATIO));
+  }
+
+  function narrowWidth() {
+    return Math.round(stageHeight() * NARROW_RATIO);
+  }
+
+  function setWidth(w) {
+    frame.style.width = w + 'px';
+  }
+
+  // 宽度补间动画
+  function animateWidth(to, duration, easing) {
+    cancelAnimationFrame(rafId);
+
+    var from = frame.getBoundingClientRect().width || to;
+    var start = null;
+
+    function step(ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / duration);
+      setWidth(from + (to - from) * easing(t));
+      if (t < 1) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        rafId = null;
+      }
+    }
+    rafId = requestAnimationFrame(step);
+  }
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeInCubic(t)  { return t * t * t; }
+
+  // 展开：窄（合上） -> 宽（展开）
+  function growToWide() {
+    wantOpen = true;
+    animateWidth(wideWidth(), 1100, easeOutCubic);
+  }
+
+  // 外折：宽（展开） -> 窄（合上）
+  function shrinkToNarrow() {
+    wantOpen = false;
+    animateWidth(narrowWidth(), 1100, easeInCubic);
+  }
+
+  // dir: 'open' 窄->宽（展开动作）；'fold' 宽->窄（合上 / 外折动作）
+  function loadPage(src, btn, dir) {
+    var folding = dir === 'fold';
+
+    btnOpen.classList.toggle('active', btn === btnOpen);
+    btnClose.classList.toggle('active', btn === btnClose);
+    btnFold.classList.toggle('active', btn === btnFold);
+
+    if (currentSrc === src) {
+      if (folding) shrinkToNarrow(); else growToWide();
+      return;
+    }
+    currentSrc = src;
+
+    // 切换页面时，先把 iframe 宽度放到该动作的“起点”，并让目标态与起点一致，
+    // 避免加载期间窗口缩放把宽度改错：
+    //   展开动作以窄（合上）为起点；外折动作以宽（展开）为起点
+    wantOpen = folding;
+    setWidth(folding ? wideWidth() : narrowWidth());
+
+    // 页面在起点宽度完成首帧渲染后，再播放到终点宽度的补间
+    frame.onload = function () {
+      if (folding) shrinkToNarrow(); else growToWide();
+    };
+    frame.src = src;
+  }
+
+  btnOpen.addEventListener('click', function () {
+    loadPage(OPEN_SRC, btnOpen, 'open');
+  });
+
+  // 合上：与展开相反，open 页宽->窄
+  btnClose.addEventListener('click', function () {
+    loadPage(OPEN_SRC, btnClose, 'fold');
+  });
+
+  btnFold.addEventListener('click', function () {
+    loadPage(FOLD_SRC, btnFold, 'fold');
+  });
+
+  // 窗口尺寸变化时：展开态贴合新的宽宽度，折合态保持窄宽度
+  window.addEventListener('resize', function () {
+    if (rafId !== null) return;
+    setWidth(wantOpen ? wideWidth() : narrowWidth());
+  });
+
+  // 初始：以窄宽度（折合态）载入 open 页并停留，点击“展开”后才播放展开动画
+  setWidth(narrowWidth());
+  currentSrc = OPEN_SRC;
+  frame.src = OPEN_SRC;
+})();
+</script>
+</body>
+</html>

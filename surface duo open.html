@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Surface Duo · 折叠</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+
+    /* 关键：页面背景透明 */
+    background: transparent;
+  }
+
+  /* ============ 全屏 3D 舞台 ============ */
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 1800px;
+    perspective-origin: 50% 50%;
+    overflow: hidden;
+    background: transparent; /* 舞台也透明 */
+  }
+
+  .world {
+    transform-style: preserve-3d;
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  /* ============ 设备 ============ */
+  .device {
+    position: relative;
+    width: 500px;
+    height: 390px;
+    transform-style: preserve-3d;
+    transform-origin: 50% 50%;
+    will-change: transform;
+  }
+
+  /* ============ 面板 ============ */
+  .panel {
+    position: absolute;
+    top: 0;
+    width: 250px;
+    height: 390px;
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+
+  .panel-left {
+    left: 0;
+    transform-origin: 250px 195px 6px;
+  }
+
+  .panel-right {
+    left: 250px;
+    transform-origin: 0px 195px 6px;
+  }
+
+  /* 面板在 3D 旋转后会抢占命中测试，导致 iframe 收不到点击：
+     容器不参与命中，只让屏幕里的 iframe 可点 */
+  .panel,
+  .face,
+  .screen {
+    pointer-events: none;
+  }
+
+  /* ============ 面 ============ */
+  .face {
+    position: absolute;
+    inset: 0;
+    border-radius: 15px;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  .face.front {
+    background: #070a10;
+    box-shadow: inset 0 0 0 1px rgba(150, 185, 255, .10);
+  }
+
+  .face.back {
+    transform: rotateY(180deg);
+    background: linear-gradient(135deg, #2d3440 0%, #171b23 42%, #232932 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07);
+  }
+
+  .face.back::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(118deg,
+      transparent 32%,
+      rgba(255, 255, 255, .10) 46%,
+      rgba(255, 255, 255, .02) 55%,
+      transparent 66%);
+  }
+
+  /* 背面 Logo */
+  .logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 34px;
+    height: 34px;
+    transform: translate(-50%, -50%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    opacity: .36;
+  }
+
+  .logo i {
+    display: block;
+    background: linear-gradient(145deg, #cdd9ea, #8d9bb0);
+    border-radius: 2px;
+  }
+
+  /* ============ 屏幕 ============ */
+  .screen {
+    position: absolute;
+    inset: 4px;
+    border-radius: 11px;
+    overflow: hidden;
+    background: #0a0f1c;
+  }
+
+  .screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 24% 18%, rgba(70, 145, 255, .55), transparent 55%),
+      radial-gradient(circle at 82% 72%, rgba(160, 85, 255, .42), transparent 55%),
+      radial-gradient(circle at 42% 112%, rgba(0, 210, 190, .30), transparent 55%),
+      linear-gradient(165deg, #16233d 0%, #0a0f1c 72%);
+  }
+
+  /* 铰链侧阴影 */
+  .edge-shade {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .edge-shade.right {
+    right: 0;
+    background: linear-gradient(to left, rgba(0, 0, 0, .62), rgba(0, 0, 0, 0));
+  }
+
+  .edge-shade.left {
+    left: 0;
+    background: linear-gradient(to right, rgba(0, 0, 0, .62), rgba(0, 0, 0, 0));
+  }
+
+  /* 顶部高光 */
+  .screen::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 45%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, .05), transparent);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ============ 设备内容：内嵌网页 ============ */
+  /* .screen 内缩 4px 后可视区域为 242 × 382 */
+  /* 尺寸与缩放由脚本按 ZOOM 换算，这里只负责定位 */
+  .app-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    border: 0;
+    background: #fff;
+    z-index: 1;
+    transform-origin: 0 0;
+    pointer-events: auto;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="world" id="world">
+      <div class="device" id="device">
+        <!-- ===== 左面板 ===== -->
+        <div class="panel panel-left" id="panelLeft">
+          <div class="face front">
+            <div class="screen">
+              <iframe id="frameLeft" class="app-frame" src="navigateviewer.html" title="NavigationView"></iframe>
+              <div class="edge-shade right"></div>
+            </div>
+          </div>
+          <div class="face back">
+            <div class="logo">
+              <i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 右面板 ===== -->
+        <div class="panel panel-right">
+          <div class="face front">
+            <div class="screen">
+              <iframe id="frameRight" class="app-frame" src="navigateviewer.html" title="NavigationView"></iframe>
+              <div class="edge-shade left"></div>
+            </div>
+          </div>
+          <div class="face back">
+            <div class="logo">
+              <i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  const world     = document.getElementById('world');
+  const device    = document.getElementById('device');
+  const panelLeft = document.getElementById('panelLeft');
+  const frameLeft  = document.getElementById('frameLeft');
+  const frameRight = document.getElementById('frameRight');
+
+  const DEVICE_H  = 390;
+  const PANEL_W   = 250;
+  const TILT_X    = 0;
+  const TILT_Y    = 0;
+  const SHIFT     = 125;
+
+  const ZOOM      = 0.6;                   // 网页整体缩放：越小则文字、图标、控件越小
+  const SCREEN_W  = PANEL_W - 8;           // .screen 内缩 4px 后的可视宽度
+  const SCREEN_H  = DEVICE_H - 8;
+  const FRAME_W   = (SCREEN_W * 2) / ZOOM; // 网页横跨双屏的逻辑宽度
+  const FRAME_H   = SCREEN_H / ZOOM;
+
+  const OPEN_ASPECT = 1.65;
+  const FOLD_ASPECT = 0.85;
+
+  let angle = null;
+  let scale = null;
+
+  // 左右两屏各显示同一网页的一半，缩放后正好铺满屏幕
+  [frameLeft, frameRight].forEach(function (f) {
+    f.style.width     = FRAME_W + 'px';
+    f.style.height    = FRAME_H + 'px';
+    f.style.transform = 'scale(' + ZOOM + ')';
+  });
+  // left 是布局值，不受自身 scale 影响，因此用屏幕宽度而非逻辑宽度
+  frameRight.style.left = -SCREEN_W + 'px';
+
+  // 左右两个 iframe 是同一页面的两半：把一半的状态转发给另一半，保持同步
+  window.addEventListener('message', function (e) {
+    const data = e.data;
+    if (!data || data.type !== 'navview:state') return;
+    [frameLeft, frameRight].forEach(function (f) {
+      if (f.contentWindow) f.contentWindow.postMessage(data, '*');
+    });
+  });
+
+  function computeTargetAngle() {
+    const aspect = window.innerWidth / window.innerHeight;
+    let t = (OPEN_ASPECT - aspect) / (OPEN_ASPECT - FOLD_ASPECT);
+    t = Math.max(0, Math.min(1, t));
+    t = t * t * (3 - 2 * t);
+    return t * 180;
+  }
+
+  function frame() {
+    const target = computeTargetAngle();
+
+    if (angle === null) {
+      angle = target;
+    } else {
+      angle += (target - angle) * 0.12;
+      if (Math.abs(target - angle) < 0.01) angle = target;
+    }
+
+    const rad  = angle * Math.PI / 180;
+    const cosA = Math.cos(rad);
+    const bboxW = PANEL_W + PANEL_W * Math.max(cosA, 0);
+
+    const cosTX = Math.cos(TILT_X * Math.PI / 180);
+    const cosTY = Math.cos(TILT_Y * Math.PI / 180);
+    const availW = window.innerWidth;
+    const availH = window.innerHeight;
+
+    const targetScale = Math.min(
+      availW / (bboxW * cosTY),
+      availH / (DEVICE_H * cosTX)
+    );
+
+    if (scale === null) {
+      scale = targetScale;
+    } else {
+      scale += (targetScale - scale) * 0.12;
+      if (Math.abs(targetScale - scale) < 0.0001) scale = targetScale;
+    }
+
+    let tx;
+    if (cosA >= 0) {
+      tx = -SHIFT + SHIFT * cosA;
+    } else {
+      tx = -SHIFT;
+    }
+
+    world.style.transform = 'scale(' + scale.toFixed(4) + ')';
+    device.style.transform =
+      'translate3d(' + tx.toFixed(2) + 'px, 0, 0) ' +
+      'rotateX(' + TILT_X + 'deg) ' +
+      'rotateY(' + TILT_Y + 'deg)';
+    panelLeft.style.transform = 'rotateY(' + angle.toFixed(2) + 'deg)';
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
+<!-- （注：内容由AI生成） -->

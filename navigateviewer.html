@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UWP NavigationView · Master-Detail Adaptive Layout</title>
+<style>
+/* ============================================================
+   Theme Variables
+   ============================================================ */
+body.light {
+  --pane-bg: rgba(243, 243, 243, .82);
+  --content-bg: rgba(255, 255, 255, .64);
+  --titlebar-bg: rgba(243, 243, 243, .82);
+  --text-primary: rgba(0, 0, 0, .8956);
+  --text-secondary: rgba(0, 0, 0, .6063);
+  --text-tertiary: rgba(0, 0, 0, .4458);
+  --item-hover: rgba(0, 0, 0, .0373);
+  --item-pressed: rgba(0, 0, 0, .0781);
+  --item-selected: rgba(0, 0, 0, .0605);
+  --item-selected-hover: rgba(0, 0, 0, .0837);
+  --divider: rgba(0, 0, 0, .0578);
+  --card-bg: #ffffff;
+  --card-stroke: rgba(0, 0, 0, .0578);
+  --accent: #0078d4;
+  --shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  --scroll-thumb: rgba(0, 0, 0, .25);
+  --quote-bg: rgba(0, 0, 0, .03);
+}
+body.dark {
+  --pane-bg: rgba(32, 32, 32, .82);
+  --content-bg: rgba(30, 30, 34, .58);
+  --titlebar-bg: rgba(32, 32, 32, .82);
+  --text-primary: rgba(255, 255, 255, .8956);
+  --text-secondary: rgba(255, 255, 255, .6063);
+  --text-tertiary: rgba(255, 255, 255, .4458);
+  --item-hover: rgba(255, 255, 255, .0605);
+  --item-pressed: rgba(255, 255, 255, .0419);
+  --item-selected: rgba(255, 255, 255, .0837);
+  --item-selected-hover: rgba(255, 255, 255, .1000);
+  --divider: rgba(255, 255, 255, .0837);
+  --card-bg: #2d2d2d;
+  --card-stroke: rgba(255, 255, 255, .08);
+  --accent: #4cc2ff;
+  --shadow: 0 2px 8px rgba(0, 0, 0, .35);
+  --scroll-thumb: rgba(255, 255, 255, .3);
+  --quote-bg: rgba(255, 255, 255, .05);
+}
+/* ============================================================
+   Base Styles
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+body {
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+:root {
+  --ease-pane: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-std:  cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* ============================================================
+   Window Container
+   ============================================================ */
+.window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  isolation: isolate;
+}
+.window::before,
+.window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: opacity .45s var(--ease-std);
+}
+.window::before {
+  opacity: 1;
+  background:
+    radial-gradient(78% 70% at 8% 2%, #b7d4ff 0%, rgba(183, 212, 255, 0) 62%),
+    radial-gradient(72% 64% at 98% 0%, #d9c6ff 0%, rgba(217, 198, 255, 0) 60%),
+    radial-gradient(88% 78% at 92% 98%, #b6eddd 0%, rgba(182, 237, 221, 0) 62%),
+    radial-gradient(70% 68% at 18% 100%, #ffd8c6 0%, rgba(255, 216, 198, 0) 60%),
+    linear-gradient(150deg, #eef4ff 0%, #f7f3ff 46%, #eefbf7 100%);
+}
+.window::after {
+  opacity: 0;
+  background:
+    radial-gradient(78% 70% at 8% 2%, #2a4a80 0%, rgba(42, 74, 128, 0) 62%),
+    radial-gradient(72% 64% at 98% 0%, #4a2f70 0%, rgba(74, 47, 112, 0) 60%),
+    radial-gradient(88% 78% at 92% 98%, #14554c 0%, rgba(20, 85, 76, 0) 62%),
+    linear-gradient(150deg, #141822 0%, #1a1526 46%, #0f1a19 100%);
+}
+body.dark .window::before { opacity: 0; }
+body.dark .window::after  { opacity: 1; }
+
+/* ============================================================
+   NavigationView Container
+   ============================================================ */
+.nav-view {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* ---------------- Navigation Pane (collapsed by default) ---------------- */
+.pane {
+  position: relative;
+  flex: none;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pane-bg);
+  backdrop-filter: blur(40px) saturate(1.4);
+  -webkit-backdrop-filter: blur(40px) saturate(1.4);
+  border-right: 1px solid var(--divider);
+  user-select: none;
+  transition:
+    width .33s var(--ease-pane),
+    background-color .45s var(--ease-std),
+    border-color .45s var(--ease-std);
+  will-change: width;
+}
+.pane.collapsed { width: 48px; }
+.pane-top {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+.hamburger {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: default;
+  transition: background-color .12s linear, color .45s var(--ease-std);
+}
+.hamburger svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  transition: transform .33s var(--ease-pane);
+}
+.hamburger:hover { background: var(--item-hover); }
+.hamburger:active { background: var(--item-pressed); }
+.nav-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+.nav-scroll::-webkit-scrollbar { width: 4px; }
+.nav-scroll::-webkit-scrollbar-track { background: transparent; }
+.nav-scroll::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 2px;
+}
+.nav-items {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 0 0 8px;
+}
+.selection-indicator {
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 3px;
+  height: 16px;
+  border-radius: 1.5px;
+  background-color: var(--accent);
+  pointer-events: none;
+  z-index: 3;
+  transform: translateY(0);
+  transition:
+    transform .34s var(--ease-pane),
+    background-color .45s var(--ease-std),
+    opacity .2s linear;
+  will-change: transform;
+}
+.nav-item {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  margin: 2px 4px;
+  padding: 0 12px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  background-color: transparent;
+  cursor: default;
+  overflow: hidden;
+  transition:
+    background-color .12s linear,
+    color .45s var(--ease-std),
+    padding .33s var(--ease-pane);
+}
+.nav-item:hover            { background-color: var(--item-hover); }
+.nav-item:active           { background-color: var(--item-pressed); }
+.nav-item.selected         { background-color: var(--item-selected); }
+.nav-item.selected:hover   { background-color: var(--item-selected-hover); }
+.item-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.item-icon svg { display: block; width: 16px; height: 16px; fill: currentColor; }
+.item-label {
+  position: absolute;
+  left: 44px;
+  right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  transition: opacity .18s linear;
+}
+.pane.collapsed .nav-item { padding: 0; justify-content: center; }
+.pane.collapsed .item-label { opacity: 0; }
+.pane.collapsed .hamburger svg { transform: rotate(0deg); }
+.nav-spacer { flex: 1 1 auto; min-height: 12px; }
+/* ---------------- Main Content Area ---------------- */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* 透明以透出 .window 的渐变背景 */
+  background-color: transparent;
+  transition: background-color .45s var(--ease-std);
+  position: relative;
+  overflow: hidden;
+}
+.content-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+/* ============================================================
+   Article List Pane
+   ============================================================ */
+.article-list {
+  flex: none;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--divider);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+  background: var(--content-bg);
+  transition: background-color .45s var(--ease-std), border-color .45s var(--ease-std), width .33s var(--ease-pane);
+}
+/* Dual-mode: 以双屏中缝（视口中线）为分栏基准，列表右缘正好落在中缝 */
+.nav-view[data-mode="dual"] .article-list {
+  flex: none;
+  width: calc(50% - 24px);   /* 导航栏折叠 48px：48 + 列表 = 视口中线 */
+  min-width: 0;
+}
+.nav-view[data-mode="dual"].pane-open .article-list {
+  width: calc(50% - 160px);  /* 导航栏展开 320px：320 + 列表 = 视口中线 */
+  min-width: 0;
+}
+.nav-view[data-mode="dual"] .article-detail {
+  flex: 1;
+  min-width:0;
+}
+
+.article-list::-webkit-scrollbar { width: 8px; }
+.article-list::-webkit-scrollbar-track { background: transparent; }
+.article-list::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.list-header {
+  padding: 16px 18px 8px;
+  font-size: 18px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  background: var(--content-bg);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  z-index: 2;
+  transition: background-color .45s var(--ease-std);
+}
+.article-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 18px;
+  cursor: default;
+  border-bottom: 1px solid var(--divider);
+  transition: background-color .15s linear, border-color .45s var(--ease-std);
+}
+.article-item:hover { background-color: var(--item-hover); }
+.article-item.selected { background-color: var(--item-selected); }
+.article-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  transition: color .45s var(--ease-std);
+}
+.article-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color .45s var(--ease-std);
+}
+/* ============================================================
+   Article Detail Pane
+   ============================================================ */
+.article-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+  background: var(--content-bg);
+  transition: background-color .45s var(--ease-std);
+}
+.article-detail::-webkit-scrollbar { width: 8px; }
+.article-detail::-webkit-scrollbar-track { background: transparent; }
+.article-detail::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.detail-inner {
+  padding: 32px 48px 64px;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.back-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: default;
+  transition: background-color .12s linear, color .45s var(--ease-std);
+}
+.back-btn svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.back-btn:hover { background: var(--item-hover); }
+.back-btn:active { background: var(--item-pressed); }
+.detail-title {
+  font-size: 28px;
+  line-height: 38px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--text-primary);
+  transition: color .45s var(--ease-std);
+}
+.detail-meta {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin-bottom: 32px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.detail-quote {
+  background: var(--quote-bg);
+  border-left: 3px solid var(--accent);
+  padding: 14px 18px;
+  margin-bottom: 32px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  border-radius: 0 6px 6px 0;
+  transition: background-color .45s var(--ease-std), border-color .45s var(--ease-std), color .45s var(--ease-std);
+}
+.detail-body {
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--text-primary);
+  transition: color .45s var(--ease-std);
+}
+.detail-body p {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+.detail-body strong {
+  font-weight: 600;
+}
+/* ============================================================
+   Adaptive Layout: Dual vs Single Mode
+   ============================================================ */
+.nav-view[data-mode="dual"] .content-layout {
+  flex-direction: row;
+}
+.nav-view[data-mode="single"] .article-list,
+.nav-view[data-mode="single"] .article-detail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-right: 0;
+  transition:
+    background-color .45s var(--ease-std),
+    opacity .22s var(--ease-std),
+    transform .32s var(--ease-pane),
+    visibility 0s 0s;
+}
+.nav-view[data-mode="single"][data-view="list"] .article-detail {
+  opacity: 0;
+  transform: translateX(26px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    background-color .45s var(--ease-std),
+    opacity .22s var(--ease-std),
+    transform .32s var(--ease-pane),
+    visibility 0s .32s;
+}
+.nav-view[data-mode="single"][data-view="detail"] .article-list {
+  opacity: 0;
+  transform: translateX(-26px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    background-color .45s var(--ease-std),
+    opacity .22s var(--ease-std),
+    transform .32s var(--ease-pane),
+    visibility 0s .32s;
+}
+.nav-view[data-mode="single"] .detail-inner { padding: 20px 24px 48px; }
+.nav-view[data-mode="single"] .back-btn { display: flex; }
+.nav-view[data-mode="single"] .article-list { width: 100%; border-right: none; }
+
+/* ============================================================
+   Theme Transition
+   ============================================================ */
+body.theme-anim,
+body.theme-anim * {
+  transition:
+    background-color .45s var(--ease-std),
+    color .45s var(--ease-std),
+    border-color .45s var(--ease-std),
+    outline-color .45s var(--ease-std),
+    fill .45s var(--ease-std),
+    stroke .45s var(--ease-std) !important;
+}
+</style>
+</head>
+<body class="light">
+<div class="window">
+  <div class="nav-view" id="navView" data-mode="dual" data-view="list">
+    <aside class="pane collapsed" id="pane">
+      <div class="pane-top">
+        <button class="hamburger" id="hamburger" aria-label="Toggle navigation pane">
+          <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+            <path d="M3 6.5h18M3 12h18M3 17.5h18" />
+          </svg>
+        </button>
+      </div>
+      <div class="nav-scroll">
+        <nav class="nav-items" id="navItems">
+          <div class="selection-indicator" id="indicator"></div>
+          <div class="nav-item selected" data-key="home" data-title="Home">
+            <span class="item-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3 2 12h3v8h6v-5h2v5h6v-8h3z" />
+              </svg>
+            </span>
+            <span class="item-label">Home</span>
+          </div>
+          <div class="nav-item" data-key="search" data-title="Search">
+            <span class="item-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+              </svg>
+            </span>
+            <span class="item-label">Search</span>
+          </div>
+          <div class="nav-item" data-key="account" data-title="Account">
+            <span class="item-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+              </svg>
+            </span>
+            <span class="item-label">Account</span>
+          </div>
+          <div class="nav-item" data-key="mail" data-title="Mail">
+            <span class="item-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+              </svg>
+            </span>
+            <span class="item-label">Mail</span>
+          </div>
+          <div class="nav-spacer"></div>
+          <div class="nav-item" data-key="settings" data-title="Settings">
+            <span class="item-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.484.484 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z" />
+              </svg>
+            </span>
+            <span class="item-label">Settings</span>
+          </div>
+        </nav>
+      </div>
+    </aside>
+    <main class="content">
+      <div class="content-layout">
+        <div class="article-list" id="articleList"></div>
+        <div class="article-detail" id="articleDetail">
+          <div class="detail-inner">
+            <div class="detail-header">
+              <button class="back-btn" id="backBtn" aria-label="Go back to list">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M14.5 5.5 8 12l6.5 6.5" />
+                </svg>
+              </button>
+            </div>
+            <h1 class="detail-title" id="detailTitle">Fluent Animations</h1>
+            <div class="detail-meta">
+              <span>Feature Overview</span>
+              <span>NavigationView Demo</span>
+            </div>
+            <div class="detail-quote">
+              This is a HTML / CSS / JavaScript simulation of the UWP NavigationView control.
+            </div>
+            <div class="detail-body" id="detailBody"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const navView      = document.getElementById('navView');
+  const pane         = document.getElementById('pane');
+  const hamburger    = document.getElementById('hamburger');
+  
+  const navItems     = document.getElementById('navItems');
+  const indicator    = document.getElementById('indicator');
+  const articleList  = document.getElementById('articleList');
+  const articleDetail= document.getElementById('articleDetail');
+  const detailTitle  = document.getElementById('detailTitle');
+  const detailBody   = document.getElementById('detailBody');
+  const backBtn      = document.getElementById('backBtn');
+  let currentMode = null;
+  let collapsed   = true;
+  let activeNavKey = 'home';
+  let activeArticleId = null;
+
+  const navData = {
+    home: {
+      header: 'Home Features',
+      items: [
+        { id: 'h1', title: 'Fluent Animations', summary: 'Pane expand-collapse, selection indicator slide...', content: '<p>Pane expand-collapse, selection indicator slide, hover feedback all use Fluent deceleration curve <code>cubic-bezier(0.1, 0.9, 0.2, 1)</code>.</p><p>Master-Detail layout: equal-width two-column in dual-screen mode. Columns keep equal size while resizing window.</p>' },
+        { id: 'h2', title: 'Theme Support', summary: 'Light / Dark theme variables are preserved.', content: '<p>Full CSS variable set for light and dark color schemes.</p>' },
+        { id: 'h3', title: 'Accent Color', summary: 'Customize via CSS variable --accent', content: '<p>Selection indicator and highlights follow the --accent CSS variable.</p>' },
+        { id: 'h4', title: 'Aspect-ratio Adaptive', summary: 'Layout switches by window aspect ratio.', content: '<p>Two-column layout when ratio >= 1.05, single-column when < 0.95. Hysteresis range 0.95-1.05 prevents layout flicker.</p><p>Wide window renders equal-width two-column layout. Narrow / portrait window switches automatically to single-page mode.</p>' },
+        { id: 'h5', title: 'Manual Navigation Pane', summary: 'Click hamburger to expand / collapse pane.', content: '<p>Navigation pane is manually controlled. Default compact width is 48px, expand to 320px full width.</p>' }
+      ]
+    },
+    search: {
+      header: 'Search Settings',
+      items: [
+        { id: 's1', title: 'Keyboard Shortcut', summary: 'Ctrl + F', content: '<p>Press <strong>Ctrl + F</strong> inside app to activate search input.</p>' },
+        { id: 's2', title: 'Search Scope', summary: 'All Documents', content: '<p>Search includes local documents and cloud-synced library items.</p>' },
+        { id: 's3', title: 'Result Count', summary: '0', content: '<p>No search history available. Please enter keywords and try again.</p>' }
+      ]
+    },
+    account: {
+      header: 'Account Information',
+      items: [
+        { id: 'a1', title: 'Username', summary: 'Demo User', content: '<p>Current logged-in user is <strong>Demo User</strong>.</p><p>You may change this name inside settings page.</p>' },
+        { id: 'a2', title: 'Account Type', summary: 'Local Account', content: '<p>You are using local account without cloud-service association.</p><p>Switch to Microsoft Account for cross-device sync features.</p>' },
+        { id: 'a3', title: 'Login Status', summary: 'Signed-in', content: '<p>You are successfully signed-in. Sync and personalization features are available.</p>' }
+      ]
+    },
+    mail: {
+      header: 'Mailbox',
+      items: [
+        { id: 'm1', title: 'Inbox', summary: '0 unread', content: '<p>Your inbox is empty, there are no new messages right now.</p>' },
+        { id: 'm2', title: 'Drafts', summary: '2 items', content: '<p>You have 2 unsent draft messages. Click item to view details.</p>' },
+        { id: 'm3', title: 'Sent Items', summary: '128 items', content: '<p>Total sent email count: 128.</p>' }
+      ]
+    },
+    settings: {
+      header: 'App Settings',
+      items: [
+        { id: 'st1', title: 'Content Column Mode', summary: 'Dual equal-width / Single-page auto', content: '<p>Layout automatically switches between equal-width two-column and single-page mode by window aspect ratio.</p><p>You can disable auto-layout in settings to force fixed layout.</p>' },
+        { id: 'st2', title: 'Navigation Pane', summary: 'Collapsed by default, manual toggle', content: '<p>Navigation pane defaults to compact 48px. Click hamburger icon to expand to full 320px width.</p>' },
+        { id: 'st3', title: 'Appearance', summary: 'Light / Dark', content: '<p>Supports manual light-dark switch or follow system theme.</p>' }
+      ]
+    }
+  };
+
+  function moveIndicator(item, animate) {
+    if (!item) {
+      indicator.style.opacity = '0';
+      return;
+    }
+    indicator.style.opacity = '1';
+    const top = item.offsetTop + (item.offsetHeight - 16) / 2;
+    const target = 'translateY(' + top + 'px)';
+    if (animate === false) {
+      indicator.style.transition = 'none';
+      indicator.style.transform = target;
+      void indicator.offsetWidth;
+      indicator.style.transition = '';
+    } else {
+      indicator.style.transform = target;
+    }
+  }
+
+  function renderList(navKey, selectFirst = true) {
+    const data = navData[navKey];
+    if (!data) return;
+    let html = `<div class="list-header">${data.header}</div>`;
+    data.items.forEach((item) => {
+      html += `
+        <div class="article-item" data-id="${item.id}">
+          <div class="article-title">${item.title}</div>
+          <div class="article-summary">${item.summary}</div>
+        </div>
+      `;
+    });
+    articleList.innerHTML = html;
+    articleList.querySelectorAll('.article-item').forEach(el => {
+      el.addEventListener('click', () => {
+        selectArticle(el.dataset.id);
+        postState();
+      });
+    });
+    if (selectFirst && data.items.length > 0) {
+      selectArticle(data.items[0].id, false);
+    }
+  }
+
+  function selectArticle(id, isUserClick = true) {
+    let targetData = null;
+    Object.values(navData).forEach(cat => {
+      const found = cat.items.find(i => i.id === id);
+      if (found) targetData = found;
+    });
+    if (!targetData) return;
+    activeArticleId = id;
+    articleList.querySelectorAll('.article-item').forEach(el => {
+      el.classList.toggle('selected', el.dataset.id === id);
+    });
+    detailTitle.textContent = targetData.title;
+    detailBody.innerHTML = targetData.content;
+    articleDetail.scrollTop = 0;
+    if (isUserClick && currentMode === 'single') {
+      navView.dataset.view = 'detail';
+    }
+  }
+
+  navItems.addEventListener('click', function (e) {
+    const item = e.target.closest('.nav-item');
+    if (item && !item.classList.contains('selected')) {
+      const items = navItems.querySelectorAll('.nav-item');
+      items.forEach(el => el.classList.remove('selected'));
+      item.classList.add('selected');
+      moveIndicator(item, true);
+      activeNavKey = item.dataset.key;
+      renderList(activeNavKey, true);
+      if (currentMode === 'single') {
+        navView.dataset.view = 'list';
+      }
+      postState();
+    }
+  });
+
+  backBtn.addEventListener('click', function () {
+    navView.dataset.view = 'list';
+  });
+
+  hamburger.addEventListener('click', function () {
+    collapsed = !collapsed;
+    pane.classList.toggle('collapsed', collapsed);
+    navView.classList.toggle('pane-open', !collapsed);
+    postState();
+  });
+
+  /* ---- 跨 iframe 状态同步（作为 Surface Duo 双屏的两半被嵌入时生效） ---- */
+  function postState() {
+    if (window.parent === window) return;
+    window.parent.postMessage({
+      type: 'navview:state',
+      navKey: activeNavKey,
+      articleId: activeArticleId,
+      collapsed: collapsed
+    }, '*');
+  }
+
+  window.addEventListener('message', function (e) {
+    const d = e.data;
+    if (!d || d.type !== 'navview:state') return;
+    if (typeof d.collapsed === 'boolean' && d.collapsed !== collapsed) {
+      collapsed = d.collapsed;
+      pane.classList.toggle('collapsed', collapsed);
+      navView.classList.toggle('pane-open', !collapsed);
+    }
+    if (d.navKey && d.navKey !== activeNavKey) {
+      activeNavKey = d.navKey;
+      navItems.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.toggle('selected', el.dataset.key === activeNavKey);
+      });
+      moveIndicator(navItems.querySelector('.nav-item.selected'), true);
+      renderList(activeNavKey, false);
+    }
+    if (d.articleId && d.articleId !== activeArticleId) {
+      selectArticle(d.articleId, false);
+    }
+  });
+
+  function applyLayout() {
+    const w = navView.clientWidth;
+    const h = navView.clientHeight;
+    if (w < 2 || h < 2) return;
+    const ratio = w / h;
+    let mode;
+    if (currentMode === null) {
+      mode = ratio >= 1.05 ? 'dual' : 'single';
+    } else if (ratio < 0.95) {
+      mode = 'single';
+    } else if (ratio > 1.05) {
+      mode = 'dual';
+    } else {
+      mode = currentMode;
+    }
+    if (mode !== currentMode) {
+      currentMode = mode;
+      navView.dataset.mode = mode;
+      if (mode === 'dual') {
+        navView.dataset.view = 'list';
+      }
+      articleList.animate([{ opacity: 0.6 }, { opacity: 1 }],
+        { duration: 220, easing: 'cubic-bezier(0.1, 0.9, 0.2, 1)' });
+    }
+  }
+
+  function init() {
+    collapsed = true;
+    pane.classList.add('collapsed');
+    const selectedNav = navItems.querySelector('.nav-item.selected');
+    moveIndicator(selectedNav, false);
+    renderList('home', true);
+    applyLayout();
+    window.addEventListener('resize', applyLayout);
+    window.addEventListener('orientationchange', () => setTimeout(applyLayout, 60));
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => applyLayout());
+      ro.observe(navView);
+    }
+  }
+  if (document.readyState === 'complete') {
+    init();
+  } else {
+    window.addEventListener('load', init);
+  }
+})();
+</script>
+</body>
+</html>
+<!-- （注：内容由AI生成） -->
