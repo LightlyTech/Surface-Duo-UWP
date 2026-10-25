@@ -108,9 +108,10 @@
   <h1 class="app-title">Surface Duo折叠应用自适应示例</h1>
 
   <div class="toolbar">
-    <button class="mode-btn" id="btnOpen" type="button">展开</button>
     <button class="mode-btn" id="btnClose" type="button">合上</button>
+    <button class="mode-btn" id="btnOpen" type="button">展开</button>
     <button class="mode-btn" id="btnFold" type="button">外折</button>
+    <button class="mode-btn" id="btnFoldOpen" type="button">展开</button>
   </div>
 
   <div class="stage">
@@ -126,6 +127,7 @@
   var btnOpen  = document.getElementById('btnOpen');
   var btnClose = document.getElementById('btnClose');
   var btnFold  = document.getElementById('btnFold');
+  var btnFoldOpen = document.getElementById('btnFoldOpen');
 
   // 内嵌网页内部按“自身视口宽高比”决定折叠角：
   //   宽高比 >= 1.65 完全展开，<= 0.85 完全折合
@@ -200,6 +202,7 @@
     btnOpen.classList.toggle('active', btn === btnOpen);
     btnClose.classList.toggle('active', btn === btnClose);
     btnFold.classList.toggle('active', btn === btnFold);
+    btnFoldOpen.classList.toggle('active', btn === btnFoldOpen);
 
     if (currentSrc === src) {
       if (folding) shrinkToNarrow(); else growToWide();
@@ -231,6 +234,11 @@
 
   btnFold.addEventListener('click', function () {
     loadPage(FOLD_SRC, btnFold, 'fold');
+  });
+
+  // 外折展开：外折的反向动作，fold 页窄->宽
+  btnFoldOpen.addEventListener('click', function () {
+    loadPage(FOLD_SRC, btnFoldOpen, 'open');
   });
 
   // 窗口尺寸变化时：展开态贴合新的宽宽度，折合态保持窄宽度
