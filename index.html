@@ -102,6 +102,71 @@
     color: #9cdcff;
     box-shadow: inset 0 0 0 1px rgba(76, 194, 255, .35);
   }
+
+  /* ============ 竖屏提示 ============ */
+  .rotate-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    background:
+      radial-gradient(80% 70% at 20% 10%, rgba(76, 194, 255, .14), transparent 60%),
+      radial-gradient(80% 70% at 85% 90%, rgba(176, 107, 255, .14), transparent 60%),
+      rgba(12, 15, 22, .82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  body.portrait .rotate-mask { display: flex; }
+
+  .rotate-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    text-align: center;
+    animation: tipIn .35s cubic-bezier(.2, .9, .3, 1.2) both;
+  }
+
+  .rotate-icon {
+    width: 72px;
+    height: 72px;
+    color: #9cdcff;
+    animation: rotatePhone 1.8s ease-in-out infinite;
+  }
+
+  .rotate-title {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    background: linear-gradient(90deg, #4cc2ff 0%, #6f9bff 45%, #b06bff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .rotate-desc {
+    margin: 0;
+    max-width: 320px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: rgba(235, 242, 255, .66);
+  }
+
+  @keyframes rotatePhone {
+    0%, 30%   { transform: rotate(0deg); }
+    55%, 100% { transform: rotate(90deg); }
+  }
+
+  @keyframes tipIn {
+    from { opacity: 0; transform: translateY(12px) scale(.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
 </style>
 </head>
 <body>
@@ -116,6 +181,18 @@
 
   <div class="stage">
     <iframe id="deviceFrame" title="Surface Duo 设备演示"></iframe>
+  </div>
+
+  <!-- 竖屏（宽 < 高）时提示横屏 -->
+  <div class="rotate-mask" aria-hidden="true">
+    <div class="rotate-card">
+      <svg class="rotate-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="7" y="2.5" width="10" height="19" rx="2.4" />
+        <line x1="10.5" y1="18.5" x2="13.5" y2="18.5" />
+      </svg>
+      <p class="rotate-title">请横屏使用</p>
+      <p class="rotate-desc">当前为竖向窗口，双屏设备需要在横屏下才能正确显示，请将窗口拉宽或旋转设备至横屏。</p>
+    </div>
   </div>
 
 <script>
@@ -239,6 +316,16 @@
   // 外折展开：外折的反向动作，fold 页窄->宽
   btnFoldOpen.addEventListener('click', function () {
     loadPage(FOLD_SRC, btnFoldOpen, 'open');
+  });
+
+  // 竖屏（宽 < 高）时提示横屏，恢复横屏后提示消失
+  function checkOrientation() {
+    document.body.classList.toggle('portrait', window.innerWidth < window.innerHeight);
+  }
+  checkOrientation();
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(checkOrientation, 60);
   });
 
   // 窗口尺寸变化时：展开态贴合新的宽宽度，折合态保持窄宽度
