@@ -40,12 +40,4 @@ A UWP NavigationView–style sample app runs inside the device screens:
 | `surface duo out fold.html` | Demo page for the out-fold posture |
 | `navigateviewer.html` | The sample app running on the device screens |
 
-## How to Open
 
-Because the pages are loaded in an embedded frame, a local static server is recommended:
-
-```bash
-python -m http.server 8000
-```
-
-Then open `http://localhost:8000/index.html` in your browser. The latest version of Edge or Chrome is recommended.
