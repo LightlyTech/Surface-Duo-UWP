@@ -40,12 +40,3 @@
 | `surface duo out fold.html` | 设备外折形态的演示页 |
 | `navigateviewer.html` | 运行在设备屏幕中的示例应用 |
 
-## 如何打开
-
-由于页面以嵌入方式加载，建议通过本地静态服务器访问：
-
-```bash
-python -m http.server 8000
-```
-
-然后在浏览器中打开 `http://localhost:8000/index.html`。建议使用最新版 Edge 或 Chrome 浏览器。
