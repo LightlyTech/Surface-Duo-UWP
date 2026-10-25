@@ -2,6 +2,8 @@
 
 An interactive demo of the Surface Duo dual-screen device, showing how the app inside the screens automatically adapts its layout as the device switches between different form factors. No installation and no internet connection are required — just open it in a browser.
 
+[Online experience](https://lightlytech.github.io/Surface-Duo-UWP/)
+
 ## Features
 
 ### Three Device Postures
